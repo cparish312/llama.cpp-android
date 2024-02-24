@@ -918,7 +918,7 @@ static cl_program build_program_from_source(cl_context ctx, cl_device_id dev, co
 
     program_size = strlen(program_buffer);
 
-    p = clCreateProgramWithSource(ctx, 1, (const char**)&program_buffer, &program_size, &err);
+    p = clblast::clCreateProgramWithSource(ctx, 1, (const char**)&program_buffer, &program_size, &err);
     if(err < 0) {
         fprintf(stderr, "OpenCL error creating program");
         exit(1);
@@ -928,13 +928,13 @@ static cl_program build_program_from_source(cl_context ctx, cl_device_id dev, co
                                "-DQK4_0=32 -DQR4_0=2 -DQK4_1=32 -DQR4_1=2 -DQK5_0=32 -DQR5_0=2 -DQK5_1=32 -DQR5_1=2 -DQK8_0=32 -DQR8_0=1 "
                                "-DQK_K=256 -DK_QUANTS_PER_ITERATION=" + std::to_string(K_QUANTS_PER_ITERATION);
 
-    err = clBuildProgram(p, 0, NULL, compile_opts.c_str(), NULL, NULL);
+    err = clblast::clBuildProgram(p, 0, NULL, compile_opts.c_str(), NULL, NULL);
     if(err < 0) {
 
-        clGetProgramBuildInfo(p, dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
+        clblast::clGetProgramBuildInfo(p, dev, CL_PROGRAM_BUILD_LOG, 0, NULL, &log_size);
         program_log = (char*) malloc(log_size + 1);
         program_log[log_size] = '\0';
-        clGetProgramBuildInfo(p, dev, CL_PROGRAM_BUILD_LOG, log_size + 1, program_log, NULL);
+        clblast::clGetProgramBuildInfo(p, dev, CL_PROGRAM_BUILD_LOG, log_size + 1, program_log, NULL);
         fprintf(stderr, "ggml_opencl: kernel compile error:\n\n%s\n", program_log);
         free(program_log);
         exit(1);
@@ -983,17 +983,17 @@ void ggml_cl_init(void) {
     device = NULL;
 
     cl_platform_id platform_ids[NPLAT];
-    CL_CHECK(clGetPlatformIDs(NPLAT, platform_ids, &n_platforms));
+    CL_CHECK(clblast::clGetPlatformIDs(NPLAT, platform_ids, &n_platforms));
 
     for (unsigned i = 0; i < n_platforms; i++) {
         struct cl_platform * p = &platforms[i];
         p->number = i;
         p->id = platform_ids[i];
-        CL_CHECK(clGetPlatformInfo(p->id, CL_PLATFORM_NAME, sizeof(p->name), &p->name, NULL));
-        CL_CHECK(clGetPlatformInfo(p->id, CL_PLATFORM_VENDOR, sizeof(p->vendor), &p->vendor, NULL));
+        CL_CHECK(clblast::clGetPlatformInfo(p->id, CL_PLATFORM_NAME, sizeof(p->name), &p->name, NULL));
+        CL_CHECK(clblast::clGetPlatformInfo(p->id, CL_PLATFORM_VENDOR, sizeof(p->vendor), &p->vendor, NULL));
 
         cl_device_id device_ids[NDEV];
-        cl_int clGetDeviceIDsError = clGetDeviceIDs(p->id, CL_DEVICE_TYPE_ALL, NDEV, device_ids, &p->n_devices);
+        cl_int clGetDeviceIDsError = clblast::clGetDeviceIDs(p->id, CL_DEVICE_TYPE_ALL, NDEV, device_ids, &p->n_devices);
         if (clGetDeviceIDsError == CL_DEVICE_NOT_FOUND) {
             p->n_devices = 0;
         } else {
@@ -1007,8 +1007,8 @@ void ggml_cl_init(void) {
             d->number = n_devices++;
             d->id = device_ids[j];
             d->platform = p;
-            CL_CHECK(clGetDeviceInfo(d->id, CL_DEVICE_NAME, sizeof(d->name), &d->name, NULL));
-            CL_CHECK(clGetDeviceInfo(d->id, CL_DEVICE_TYPE, sizeof(d->type), &d->type, NULL));
+            CL_CHECK(clblast::clGetDeviceInfo(d->id, CL_DEVICE_NAME, sizeof(d->name), &d->name, NULL));
+            CL_CHECK(clblast::clGetDeviceInfo(d->id, CL_DEVICE_TYPE, sizeof(d->type), &d->type, NULL));
 
             if (p->default_device == NULL && d->type == CL_DEVICE_TYPE_GPU) {
                 p->default_device = d;
@@ -1110,9 +1110,9 @@ void ggml_cl_init(void) {
     device = default_device->id;
 
     size_t ext_str_size;
-    clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, 0, NULL, &ext_str_size);
+    clblast::clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, 0, NULL, &ext_str_size);
     char *ext_buffer = (char *)alloca(ext_str_size + 1);
-    clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, ext_str_size, ext_buffer, NULL);
+    clblast::clGetDeviceInfo(device, CL_DEVICE_EXTENSIONS, ext_str_size, ext_buffer, NULL);
     ext_buffer[ext_str_size] = '\0'; // ensure it is null terminated
     // Disabled due to faulty outputs
     // Check if ext_buffer contains cl_khr_fp16
@@ -1123,11 +1123,11 @@ void ggml_cl_init(void) {
         (intptr_t)CL_CONTEXT_PLATFORM, (intptr_t)platform, 0
     };
 
-    CL_CHECK((context = clCreateContext(properties, 1, &device, NULL, NULL, &err), err));
+    CL_CHECK((context = clblast::clCreateContext(properties, 1, &device, NULL, NULL, &err), err));
 
-    CL_CHECK((queue = clCreateCommandQueue(context, device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err),
+    CL_CHECK((queue = clblast::clCreateCommandQueue(context, device, CL_QUEUE_OUT_OF_ORDER_EXEC_MODE_ENABLE, &err),
         (err != CL_INVALID_QUEUE_PROPERTIES && err != CL_INVALID_VALUE ? err :
-        (queue = clCreateCommandQueue(context, device, 0, &err), err)
+        (queue = clblast::clCreateCommandQueue(context, device, 0, &err), err)
     )));
 
     const std::string kernel_src = generate_kernels();
@@ -1135,38 +1135,38 @@ void ggml_cl_init(void) {
     program = build_program_from_source(context, device, kernel_src.c_str());
 
     // FP16 to FP32 kernel
-    CL_CHECK((convert_row_f16_cl = clCreateKernel(program, "convert_row_f16", &err), err));
+    CL_CHECK((convert_row_f16_cl = clblast::clCreateKernel(program, "convert_row_f16", &err), err));
 
     // Dequantize kernels
-    CL_CHECK((dequantize_row_q4_0_cl = clCreateKernel(program, "dequantize_row_q4_0", &err), err));
-    CL_CHECK((dequantize_row_q4_1_cl = clCreateKernel(program, "dequantize_row_q4_1", &err), err));
-    CL_CHECK((dequantize_row_q5_0_cl = clCreateKernel(program, "dequantize_row_q5_0", &err), err));
-    CL_CHECK((dequantize_row_q5_1_cl = clCreateKernel(program, "dequantize_row_q5_1", &err), err));
-    CL_CHECK((dequantize_row_q8_0_cl = clCreateKernel(program, "dequantize_row_q8_0", &err), err));
-    CL_CHECK((dequantize_row_q8_0_cl = clCreateKernel(program, "dequantize_row_q8_0", &err), err));
-    CL_CHECK((dequantize_block_q2_k_cl = clCreateKernel(program, "dequantize_block_q2_K", &err), err));
-    CL_CHECK((dequantize_block_q3_k_cl = clCreateKernel(program, "dequantize_block_q3_K", &err), err));
-    CL_CHECK((dequantize_block_q4_k_cl = clCreateKernel(program, "dequantize_block_q4_K", &err), err));
-    CL_CHECK((dequantize_block_q5_k_cl = clCreateKernel(program, "dequantize_block_q5_K", &err), err));
-    CL_CHECK((dequantize_block_q6_k_cl = clCreateKernel(program, "dequantize_block_q6_K", &err), err));
+    CL_CHECK((dequantize_row_q4_0_cl = clblast::clCreateKernel(program, "dequantize_row_q4_0", &err), err));
+    CL_CHECK((dequantize_row_q4_1_cl = clblast::clCreateKernel(program, "dequantize_row_q4_1", &err), err));
+    CL_CHECK((dequantize_row_q5_0_cl = clblast::clCreateKernel(program, "dequantize_row_q5_0", &err), err));
+    CL_CHECK((dequantize_row_q5_1_cl = clblast::clCreateKernel(program, "dequantize_row_q5_1", &err), err));
+    CL_CHECK((dequantize_row_q8_0_cl = clblast::clCreateKernel(program, "dequantize_row_q8_0", &err), err));
+    CL_CHECK((dequantize_row_q8_0_cl = clblast::clCreateKernel(program, "dequantize_row_q8_0", &err), err));
+    CL_CHECK((dequantize_block_q2_k_cl = clblast::clCreateKernel(program, "dequantize_block_q2_K", &err), err));
+    CL_CHECK((dequantize_block_q3_k_cl = clblast::clCreateKernel(program, "dequantize_block_q3_K", &err), err));
+    CL_CHECK((dequantize_block_q4_k_cl = clblast::clCreateKernel(program, "dequantize_block_q4_K", &err), err));
+    CL_CHECK((dequantize_block_q5_k_cl = clblast::clCreateKernel(program, "dequantize_block_q5_K", &err), err));
+    CL_CHECK((dequantize_block_q6_k_cl = clblast::clCreateKernel(program, "dequantize_block_q6_K", &err), err));
 
     // dequant mul mat kernel
-    CL_CHECK((dequantize_mul_mat_vec_q4_0_cl = clCreateKernel(program, "dequantize_mul_mat_vec_q4_0", &err), err));
-    CL_CHECK((dequantize_mul_mat_vec_q4_1_cl = clCreateKernel(program, "dequantize_mul_mat_vec_q4_1", &err), err));
-    CL_CHECK((dequantize_mul_mat_vec_q5_0_cl = clCreateKernel(program, "dequantize_mul_mat_vec_q5_0", &err), err));
-    CL_CHECK((dequantize_mul_mat_vec_q5_1_cl = clCreateKernel(program, "dequantize_mul_mat_vec_q5_1", &err), err));
-    CL_CHECK((dequantize_mul_mat_vec_q8_0_cl = clCreateKernel(program, "dequantize_mul_mat_vec_q8_0", &err), err));
-    CL_CHECK((convert_mul_mat_vec_f16_cl = clCreateKernel(program, "convert_mul_mat_vec_f16", &err), err));
-    CL_CHECK((dequantize_mul_mat_vec_q2_K_cl = clCreateKernel(program, "dequantize_mul_mat_vec_q2_K", &err), err));
-    CL_CHECK((dequantize_mul_mat_vec_q3_K_cl = clCreateKernel(program, "dequantize_mul_mat_vec_q3_K", &err), err));
-    CL_CHECK((dequantize_mul_mat_vec_q4_K_cl = clCreateKernel(program, "dequantize_mul_mat_vec_q4_K", &err), err));
-    CL_CHECK((dequantize_mul_mat_vec_q5_K_cl = clCreateKernel(program, "dequantize_mul_mat_vec_q5_K", &err), err));
-    CL_CHECK((dequantize_mul_mat_vec_q6_K_cl = clCreateKernel(program, "dequantize_mul_mat_vec_q6_K", &err), err));
+    CL_CHECK((dequantize_mul_mat_vec_q4_0_cl = clblast::clCreateKernel(program, "dequantize_mul_mat_vec_q4_0", &err), err));
+    CL_CHECK((dequantize_mul_mat_vec_q4_1_cl = clblast::clCreateKernel(program, "dequantize_mul_mat_vec_q4_1", &err), err));
+    CL_CHECK((dequantize_mul_mat_vec_q5_0_cl = clblast::clCreateKernel(program, "dequantize_mul_mat_vec_q5_0", &err), err));
+    CL_CHECK((dequantize_mul_mat_vec_q5_1_cl = clblast::clCreateKernel(program, "dequantize_mul_mat_vec_q5_1", &err), err));
+    CL_CHECK((dequantize_mul_mat_vec_q8_0_cl = clblast::clCreateKernel(program, "dequantize_mul_mat_vec_q8_0", &err), err));
+    CL_CHECK((convert_mul_mat_vec_f16_cl = clblast::clCreateKernel(program, "convert_mul_mat_vec_f16", &err), err));
+    CL_CHECK((dequantize_mul_mat_vec_q2_K_cl = clblast::clCreateKernel(program, "dequantize_mul_mat_vec_q2_K", &err), err));
+    CL_CHECK((dequantize_mul_mat_vec_q3_K_cl = clblast::clCreateKernel(program, "dequantize_mul_mat_vec_q3_K", &err), err));
+    CL_CHECK((dequantize_mul_mat_vec_q4_K_cl = clblast::clCreateKernel(program, "dequantize_mul_mat_vec_q4_K", &err), err));
+    CL_CHECK((dequantize_mul_mat_vec_q5_K_cl = clblast::clCreateKernel(program, "dequantize_mul_mat_vec_q5_K", &err), err));
+    CL_CHECK((dequantize_mul_mat_vec_q6_K_cl = clblast::clCreateKernel(program, "dequantize_mul_mat_vec_q6_K", &err), err));
 
     // mul kernel
-    CL_CHECK((mul_f32_cl = clCreateKernel(program, "mul_f32", &err), err));
+    CL_CHECK((mul_f32_cl = clblast::clCreateKernel(program, "mul_f32", &err), err));
 
-    CL_CHECK((add_f32_cl = clCreateKernel(program, "add_f32", &err), err));
+    CL_CHECK((add_f32_cl = clblast::clCreateKernel(program, "add_f32", &err), err));
 }
 
 static cl_kernel* ggml_get_to_fp32_cl(ggml_type type) {
@@ -1330,10 +1330,10 @@ static cl_mem ggml_cl_pool_malloc(size_t size, size_t * actual_size) {
          cl_buffer& b = g_cl_buffer_pool[worst_i];
          cl_mem mem = b.mem;
          b.size = 0;
-         clReleaseMemObject(mem);
+        clblast::clReleaseMemObject(mem);
     }
     cl_mem mem;
-    CL_CHECK((mem = clCreateBuffer(context, CL_MEM_READ_WRITE, size, NULL, &err), err));
+    CL_CHECK((mem = clblast::clCreateBuffer(context, CL_MEM_READ_WRITE, size, NULL, &err), err));
     *actual_size = size;
     return mem;
 }
@@ -1350,7 +1350,7 @@ static void ggml_cl_pool_free(cl_mem mem, size_t size) {
         }
     }
     fprintf(stderr, "WARNING: cl buffer pool full, increase MAX_CL_BUFFERS\n");
-    clReleaseMemObject(mem);
+    clblast::clReleaseMemObject(mem);
 }
 
 void ggml_cl_free_data(const struct ggml_tensor* tensor) {
@@ -1359,7 +1359,7 @@ void ggml_cl_free_data(const struct ggml_tensor* tensor) {
     }
 
     cl_mem mem = (cl_mem)tensor->extra;
-    clReleaseMemObject(mem);
+    clblast::clReleaseMemObject(mem);
 }
 
 static cl_int ggml_cl_h2d_tensor_2d(cl_command_queue queue, cl_mem dst, size_t offset, const struct ggml_tensor * src, uint64_t i3, uint64_t i2, cl_event* ev) {
@@ -1377,13 +1377,13 @@ static cl_int ggml_cl_h2d_tensor_2d(cl_command_queue queue, cl_mem dst, size_t o
 
     const char * x = (const char *) src->data + i2*nb2 + i3*nb3;
     if (nb0 == ts && nb1 == row_size) {
-        return clEnqueueWriteBuffer(queue, dst, CL_FALSE, offset, ne1*row_size, x, 0, NULL, ev);
+        return clblast::clEnqueueWriteBuffer(queue, dst, CL_FALSE, offset, ne1*row_size, x, 0, NULL, ev);
     }
     if (nb0 == ts) {
         const size_t buffer_origin[3] = { offset, 0, 0 };
         const size_t host_origin[3] = { 0, 0, 0 };
         const size_t region[3] = { row_size, ne1, 1 };
-        return clEnqueueWriteBufferRect(queue, dst, CL_FALSE, buffer_origin, host_origin, region, row_size, 0, nb1, 0, x, 0, NULL, ev);
+        return clblast::clEnqueueWriteBufferRect(queue, dst, CL_FALSE, buffer_origin, host_origin, region, row_size, 0, nb1, 0, x, 0, NULL, ev);
     }
     std::vector<cl_event> events;
     if (ev && ne1>1) events.reserve(ne1-1);
@@ -1397,16 +1397,16 @@ static cl_int ggml_cl_h2d_tensor_2d(cl_command_queue queue, cl_mem dst, size_t o
             events.push_back(*ev);
         }
         cl_uint nevents = i1 == ne1-1 ? events.size() : 0U;
-        err = clEnqueueWriteBufferRect(queue, dst, CL_FALSE, buffer_origin, host_origin, region, ts, 0, nb0, 0, x + i1*nb1, nevents, nevents ? events.data() : nullptr, ev);
+        err = clblast::clEnqueueWriteBufferRect(queue, dst, CL_FALSE, buffer_origin, host_origin, region, ts, 0, nb0, 0, x + i1*nb1, nevents, nevents ? events.data() : nullptr, ev);
         if (err != CL_SUCCESS) {
             for (auto event : events) {
-                clReleaseEvent(event);
+                clblast::clReleaseEvent(event);
             }
             return err;
         }
     }
     for (auto event : events) {
-        CL_CHECK(clReleaseEvent(event));
+        CL_CHECK(clblast::clReleaseEvent(event));
     }
     return CL_SUCCESS;
 }
@@ -1449,21 +1449,21 @@ static void ggml_cl_mul_f32(const ggml_tensor * src0, const ggml_tensor * src1, 
             size_t global = ne00 * ne01;
             cl_int ky = ne10 * ne11;
 
-            CL_CHECK(clSetKernelArg(mul_f32_cl, 0, sizeof(cl_mem), &d_X));
-            CL_CHECK(clSetKernelArg(mul_f32_cl, 1, sizeof(cl_int), &x_offset));
-            CL_CHECK(clSetKernelArg(mul_f32_cl, 2, sizeof(cl_mem), &d_Y));
-            CL_CHECK(clSetKernelArg(mul_f32_cl, 3, sizeof(cl_int), &y_offset));
-            CL_CHECK(clSetKernelArg(mul_f32_cl, 4, sizeof(cl_mem), &d_D));
-            CL_CHECK(clSetKernelArg(mul_f32_cl, 5, sizeof(cl_int), &d_offset));
-            CL_CHECK(clSetKernelArg(mul_f32_cl, 6, sizeof(cl_int), &ky));
-            CL_CHECK(clEnqueueNDRangeKernel(queue, mul_f32_cl, 1, NULL, &global, NULL, 1, &ev, NULL));
+            CL_CHECK(clblast::clSetKernelArg(mul_f32_cl, 0, sizeof(cl_mem), &d_X));
+            CL_CHECK(clblast::clSetKernelArg(mul_f32_cl, 1, sizeof(cl_int), &x_offset));
+            CL_CHECK(clblast::clSetKernelArg(mul_f32_cl, 2, sizeof(cl_mem), &d_Y));
+            CL_CHECK(clblast::clSetKernelArg(mul_f32_cl, 3, sizeof(cl_int), &y_offset));
+            CL_CHECK(clblast::clSetKernelArg(mul_f32_cl, 4, sizeof(cl_mem), &d_D));
+            CL_CHECK(clblast::clSetKernelArg(mul_f32_cl, 5, sizeof(cl_int), &d_offset));
+            CL_CHECK(clblast::clSetKernelArg(mul_f32_cl, 6, sizeof(cl_int), &ky));
+            CL_CHECK(clblast::clEnqueueNDRangeKernel(queue, mul_f32_cl, 1, NULL, &global, NULL, 1, &ev, NULL));
 
-            CL_CHECK(clReleaseEvent(ev));
-            CL_CHECK(clFinish(queue));
+            CL_CHECK(clblast::clReleaseEvent(ev));
+            CL_CHECK(clblast::clFinish(queue));
 
             // copy dst to host
             float * d = (float *) ((char *) dst->data + i02*nb2 + i03*nb3);
-            CL_CHECK(clEnqueueReadBuffer(queue, d_D, true, 0, sizeof(float) * ne00*ne01, d, 0, NULL, NULL));
+            CL_CHECK(clblast::clEnqueueReadBuffer(queue, d_D, true, 0, sizeof(float) * ne00*ne01, d, 0, NULL, NULL));
         }
     }
     ggml_cl_pool_free(d_X, x_size);
@@ -1513,21 +1513,21 @@ static void ggml_cl_add_f32(const ggml_tensor * src0, const ggml_tensor * src1, 
             size_t global = ne00 * ne01;
             cl_int ky = ne10 * ne11;
 
-            CL_CHECK(clSetKernelArg(add_f32_cl, 0, sizeof(cl_mem), &d_X));
-            CL_CHECK(clSetKernelArg(add_f32_cl, 1, sizeof(cl_int), &x_offset));
-            CL_CHECK(clSetKernelArg(add_f32_cl, 2, sizeof(cl_mem), &d_Y));
-            CL_CHECK(clSetKernelArg(add_f32_cl, 3, sizeof(cl_int), &y_offset));
-            CL_CHECK(clSetKernelArg(add_f32_cl, 4, sizeof(cl_mem), &d_D));
-            CL_CHECK(clSetKernelArg(add_f32_cl, 5, sizeof(cl_int), &d_offset));
-            CL_CHECK(clSetKernelArg(add_f32_cl, 6, sizeof(cl_int), &ky));
-            CL_CHECK(clEnqueueNDRangeKernel(queue, add_f32_cl, 1, NULL, &global, NULL, 1, &ev, NULL));
+            CL_CHECK(clblast::clSetKernelArg(add_f32_cl, 0, sizeof(cl_mem), &d_X));
+            CL_CHECK(clblast::clSetKernelArg(add_f32_cl, 1, sizeof(cl_int), &x_offset));
+            CL_CHECK(clblast::clSetKernelArg(add_f32_cl, 2, sizeof(cl_mem), &d_Y));
+            CL_CHECK(clblast::clSetKernelArg(add_f32_cl, 3, sizeof(cl_int), &y_offset));
+            CL_CHECK(clblast::clSetKernelArg(add_f32_cl, 4, sizeof(cl_mem), &d_D));
+            CL_CHECK(clblast::clSetKernelArg(add_f32_cl, 5, sizeof(cl_int), &d_offset));
+            CL_CHECK(clblast::clSetKernelArg(add_f32_cl, 6, sizeof(cl_int), &ky));
+            CL_CHECK(clblast::clEnqueueNDRangeKernel(queue, add_f32_cl, 1, NULL, &global, NULL, 1, &ev, NULL));
 
-            CL_CHECK(clReleaseEvent(ev));
-            CL_CHECK(clFinish(queue));
+            CL_CHECK(clblast::clReleaseEvent(ev));
+            CL_CHECK(clblast::clFinish(queue));
 
             // copy dst to host
             float * d = (float *) ((char *) dst->data + i02*nb2 + i03*nb3);
-            CL_CHECK(clEnqueueReadBuffer(queue, d_D, true, 0, sizeof(float) * ne00*ne01, d, 0, NULL, NULL));
+            CL_CHECK(clblast::clEnqueueReadBuffer(queue, d_D, true, 0, sizeof(float) * ne00*ne01, d, 0, NULL, NULL));
         }
     }
     ggml_cl_pool_free(d_X, x_size);
@@ -1593,7 +1593,7 @@ static void ggml_cl_mul_mat_f32(const ggml_tensor * src0, const ggml_tensor * sr
                         CL_CHECK(ggml_cl_h2d_tensor_2d(queue, d_Y, 0, src1, i13, i12, NULL));
                     }
 
-                    CL_CHECK(clFinish(queue));
+                    CL_CHECK(clblast::clFinish(queue));
 
                     // compute
                     cl_event ev_sgemm;
@@ -1614,7 +1614,7 @@ static void ggml_cl_mul_mat_f32(const ggml_tensor * src0, const ggml_tensor * sr
                     // copy dst to host
                     if (dst->backend == GGML_BACKEND_CPU) {
                         float * d = (float *) ((char *) dst->data + i12*nb2 + i13*nb3);
-                        CL_CHECK(clEnqueueReadBuffer(queue, d_D, true, 0, sizeof(float) * d_ne, d, 1, &ev_sgemm, NULL));
+                        CL_CHECK(clblast::clEnqueueReadBuffer(queue, d_D, true, 0, sizeof(float) * d_ne, d, 1, &ev_sgemm, NULL));
                     }
                 }
             }
@@ -1720,9 +1720,9 @@ static void ggml_cl_mul_mat_f16(const ggml_tensor * src0, const ggml_tensor * sr
                     }
 
                     // copy src1 to device
-                    CL_CHECK(clEnqueueWriteBuffer(queue, d_Y, false, 0, sizeof(ggml_fp16_t) * y_ne, tmp, 0, NULL, NULL));
+                    CL_CHECK(clblast::clEnqueueWriteBuffer(queue, d_Y, false, 0, sizeof(ggml_fp16_t) * y_ne, tmp, 0, NULL, NULL));
 
-                    CL_CHECK(clFinish(queue));
+                    CL_CHECK(clblast::clFinish(queue));
 
                     // compute
                     cl_event ev_sgemm;
@@ -1742,7 +1742,7 @@ static void ggml_cl_mul_mat_f16(const ggml_tensor * src0, const ggml_tensor * sr
 
                     // copy dst to host, then convert to float
                     if (dst->backend == GGML_BACKEND_CPU) {
-                        CL_CHECK(clEnqueueReadBuffer(queue, d_D, true, 0, sizeof(ggml_fp16_t) * d_ne, tmp, 1, &ev_sgemm, NULL));
+                        CL_CHECK(clblast::clEnqueueReadBuffer(queue, d_D, true, 0, sizeof(ggml_fp16_t) * d_ne, tmp, 1, &ev_sgemm, NULL));
                         float * d = (float *) ((char *) dst->data + i12*nb2 + i13*nb3);
                         ggml_fp16_to_fp32_row(tmp, d, d_ne);
                     } else {
@@ -1830,9 +1830,9 @@ static void ggml_cl_mul_mat_q_f32(const ggml_tensor * src0, const ggml_tensor * 
                     // convert src0 to fp32 on device
                     const size_t global = x_ne / global_denom;
                     const size_t offset = src0->backend == GGML_BACKEND_GPU ? (i03 * ne02 + i02) * x_bps : 0;
-                    CL_CHECK(clSetKernelArg(*to_fp32_cl, 0, sizeof(cl_mem), &d_Q));
-                    CL_CHECK(clSetKernelArg(*to_fp32_cl, 1, sizeof(cl_mem), &d_X));
-                    CL_CHECK(clEnqueueNDRangeKernel(queue, *to_fp32_cl, 1, &offset, &global, local > 0 ? &local : NULL, events.size(), !events.empty() ? events.data() : NULL, NULL));
+                    CL_CHECK(clblast::clSetKernelArg(*to_fp32_cl, 0, sizeof(cl_mem), &d_Q));
+                    CL_CHECK(clblast::clSetKernelArg(*to_fp32_cl, 1, sizeof(cl_mem), &d_X));
+                    CL_CHECK(clblast::clEnqueueNDRangeKernel(queue, *to_fp32_cl, 1, &offset, &global, local > 0 ? &local : NULL, events.size(), !events.empty() ? events.data() : NULL, NULL));
                 }
 
                 for (int64_t i12 = i02 * r2, e12 = i12 + r2; i12 < e12; i12++) {
@@ -1846,18 +1846,18 @@ static void ggml_cl_mul_mat_q_f32(const ggml_tensor * src0, const ggml_tensor * 
                         const size_t offset = src0->backend == GGML_BACKEND_GPU ? (i03 * ne02 + i02) * x_bps : 0;
                         const cl_int ncols = ne00;
                         events.emplace_back();
-                        CL_CHECK(clSetKernelArg(*dmmv, 0, sizeof(cl_mem), &d_Q));
-                        CL_CHECK(clSetKernelArg(*dmmv, 1, sizeof(float) * local, NULL));
-                        CL_CHECK(clSetKernelArg(*dmmv, 2, sizeof(cl_mem), &d_Y));
-                        CL_CHECK(clSetKernelArg(*dmmv, 3, sizeof(cl_mem), &d_D));
-                        CL_CHECK(clSetKernelArg(*dmmv, 4, sizeof(cl_int), &ncols));
-                        CL_CHECK(clEnqueueNDRangeKernel(queue, *dmmv, 1, &offset, &global, &local, events.size() - 1, events.data(), events.data() + ev_idx++));
+                        CL_CHECK(clblast::clSetKernelArg(*dmmv, 0, sizeof(cl_mem), &d_Q));
+                        CL_CHECK(clblast::clSetKernelArg(*dmmv, 1, sizeof(float) * local, NULL));
+                        CL_CHECK(clblast::clSetKernelArg(*dmmv, 2, sizeof(cl_mem), &d_Y));
+                        CL_CHECK(clblast::clSetKernelArg(*dmmv, 3, sizeof(cl_mem), &d_D));
+                        CL_CHECK(clblast::clSetKernelArg(*dmmv, 4, sizeof(cl_int), &ncols));
+                        CL_CHECK(clblast::clEnqueueNDRangeKernel(queue, *dmmv, 1, &offset, &global, &local, events.size() - 1, events.data(), events.data() + ev_idx++));
                     } else { // CLBlast matrix matrix multiplication
                         // copy src1 to device
                         CL_CHECK(ggml_cl_h2d_tensor_2d(queue, d_Y, 0, src1, i13, i12, NULL));
 
                         // wait for conversion
-                        CL_CHECK(clFinish(queue));
+                        CL_CHECK(clblast::clFinish(queue));
 
                         // compute
                         events.emplace_back();
@@ -1878,9 +1878,9 @@ static void ggml_cl_mul_mat_q_f32(const ggml_tensor * src0, const ggml_tensor * 
 
                     // copy dst to host
                     float * d = (float *) ((char *) dst->data + i12*nb2 + i13*nb3);
-                    CL_CHECK(clEnqueueReadBuffer(queue, d_D, true, 0, sizeof(float) * d_ne, d, 1, &events[events.size() - 1], NULL));
+                    CL_CHECK(clblast::clEnqueueReadBuffer(queue, d_D, true, 0, sizeof(float) * d_ne, d, 1, &events[events.size() - 1], NULL));
                     for (auto *event : events) {
-                        clReleaseEvent(event);
+                        clblast::clReleaseEvent(event);
                     }
 
                     ev_idx = 0;
@@ -1990,7 +1990,7 @@ void ggml_cl_transform_tensor(void * data, ggml_tensor * tensor) {
         }
     }
 
-    CL_CHECK(clFinish(queue));
+    CL_CHECK(clblast::clFinish(queue));
 
     tensor->extra = dst;
     GGML_ASSERT(tensor->backend == GGML_BACKEND_GPU);
@@ -2003,10 +2003,10 @@ void ggml_cl_transform_tensor(void * data, ggml_tensor * tensor) {
 struct ggml_backend_opencl_buffer_context {
     ~ggml_backend_opencl_buffer_context() {
         if (buffer) {
-            clReleaseMemObject(buffer);
+            clblast::clReleaseMemObject(buffer);
         }
         for (auto * sub_buffer : sub_buffers) {
-            clReleaseMemObject(sub_buffer);
+            clblast::clReleaseMemObject(sub_buffer);
         }
     }
 
@@ -2040,7 +2040,7 @@ static void ggml_backend_opencl_buffer_init_tensor(ggml_backend_buffer_t buffer,
         ggml_backend_opencl_buffer_context * ctx = (ggml_backend_opencl_buffer_context *) buffer->context;
         cl_buffer_region region = {(size_t)((char *)tensor->data - (char *)cl_ptr_base), ggml_nbytes(tensor)};
         cl_int err;
-        cl_mem sub_buffer = clCreateSubBuffer(ctx->buffer, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &region, &err);
+        cl_mem sub_buffer = clblast::clCreateSubBuffer(ctx->buffer, CL_MEM_READ_WRITE, CL_BUFFER_CREATE_TYPE_REGION, &region, &err);
         CL_CHECK(err);
         ctx->sub_buffers.push_back(sub_buffer);
         tensor->extra = sub_buffer;
@@ -2050,30 +2050,30 @@ static void ggml_backend_opencl_buffer_init_tensor(ggml_backend_buffer_t buffer,
 
 static void ggml_backend_opencl_buffer_set_tensor(ggml_backend_buffer_t buffer, ggml_tensor * tensor, const void * data, size_t offset, size_t size) {
     cl_mem tensor_buffer = (cl_mem) tensor->extra;
-    CL_CHECK(clEnqueueWriteBuffer(queue, tensor_buffer, true, offset, size, data, 0, NULL, NULL));
-    CL_CHECK(clFinish(queue));
+    CL_CHECK(clblast::clEnqueueWriteBuffer(queue, tensor_buffer, true, offset, size, data, 0, NULL, NULL));
+    CL_CHECK(clblast::clFinish(queue));
 
     GGML_UNUSED(buffer);
 }
 
 static void ggml_backend_opencl_buffer_get_tensor(ggml_backend_buffer_t buffer, const ggml_tensor * tensor, void * data, size_t offset, size_t size) {
     cl_mem tensor_buffer = (cl_mem) tensor->extra;
-    CL_CHECK(clEnqueueReadBuffer(queue, tensor_buffer, true, offset, size, data, 0, NULL, NULL));
-    CL_CHECK(clFinish(queue));
+    CL_CHECK(clblast::clEnqueueReadBuffer(queue, tensor_buffer, true, offset, size, data, 0, NULL, NULL));
+    CL_CHECK(clblast::clFinish(queue));
 
     GGML_UNUSED(buffer);
 }
 
 static void ggml_backend_opencl_buffer_clear(ggml_backend_buffer_t buffer, uint8_t value) {
     ggml_backend_opencl_buffer_context * ctx = (ggml_backend_opencl_buffer_context *) buffer->context;
-    CL_CHECK(clEnqueueFillBuffer(queue, ctx->buffer, &value, sizeof(value), 0, buffer->size, 0, NULL, NULL));
-    CL_CHECK(clFinish(queue));
+    CL_CHECK(clblast::clEnqueueFillBuffer(queue, ctx->buffer, &value, sizeof(value), 0, buffer->size, 0, NULL, NULL));
+    CL_CHECK(clblast::clFinish(queue));
 }
 
 static void ggml_backend_opencl_buffer_reset(ggml_backend_buffer_t buffer) {
     ggml_backend_opencl_buffer_context * ctx = (ggml_backend_opencl_buffer_context *) buffer->context;
     for (auto * sub_buffer : ctx->sub_buffers) {
-        clReleaseMemObject(sub_buffer);
+        clblast::clReleaseMemObject(sub_buffer);
     }
     ctx->sub_buffers.clear();
 }
@@ -2102,7 +2102,7 @@ static ggml_backend_buffer_t ggml_backend_opencl_buffer_type_alloc_buffer(ggml_b
     ggml_cl_init();
 
     cl_int err;
-    cl_mem mem = clCreateBuffer(context, CL_MEM_READ_WRITE, size, NULL, &err);
+    cl_mem mem = clblast::clCreateBuffer(context, CL_MEM_READ_WRITE, size, NULL, &err);
     if (err != CL_SUCCESS) {
         fprintf(stderr, "%s: failed to allocate %.2f MiB\n", __func__, size / 1024.0 / 1024.0);
         return nullptr;
@@ -2118,7 +2118,7 @@ static size_t ggml_backend_opencl_buffer_type_get_alignment(ggml_backend_buffer_
     static cl_uint alignment = -1;
     if (alignment == (cl_uint)-1) {
         ggml_cl_init();
-        clGetDeviceInfo(device, CL_DEVICE_MEM_BASE_ADDR_ALIGN, sizeof(cl_uint), &alignment, NULL);
+        clblast::clGetDeviceInfo(device, CL_DEVICE_MEM_BASE_ADDR_ALIGN, sizeof(cl_uint), &alignment, NULL);
     }
     return alignment;
 
@@ -2129,7 +2129,7 @@ static size_t ggml_backend_opencl_buffer_type_get_max_size(ggml_backend_buffer_t
     static size_t max_size = -1;
     if (max_size == (size_t)-1) {
         ggml_cl_init();
-        clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(size_t), &max_size, NULL);
+        clblast::clGetDeviceInfo(device, CL_DEVICE_MAX_MEM_ALLOC_SIZE, sizeof(size_t), &max_size, NULL);
     }
     return max_size;
 }
