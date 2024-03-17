@@ -315,6 +315,8 @@
 extern "C" {
 #endif
 
+    extern bool isOpenCLSupported;
+
     typedef uint16_t ggml_fp16_t;
 
     // convert FP16 <-> FP32

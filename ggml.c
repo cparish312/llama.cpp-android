@@ -320,6 +320,8 @@ static ggml_fp16_t ggml_table_exp_f16[1 << 16];
 // precomputed f32 table for f16 (256 KB) (ggml-impl.h)
 float ggml_table_f32_f16[1 << 16];
 
+bool isOpenCLSupported = false;
+
 // note: do not use these inside ggml.c
 // these are meant to be used via the ggml.h API
 float ggml_fp16_to_fp32(ggml_fp16_t x) {
@@ -2469,7 +2471,9 @@ struct ggml_context * ggml_init(struct ggml_init_params params) {
 #if defined(GGML_USE_CUBLAS)
         ggml_init_cublas();
 #elif defined(GGML_USE_CLBLAST)
-        ggml_cl_init();
+        if (isOpenCLSupported) {
+            ggml_cl_init();
+        }
 #elif defined(GGML_USE_VULKAN)
         ggml_vk_init_cpu_assist();
 #elif defined(GGML_USE_SYCL)
@@ -7419,7 +7423,7 @@ static void ggml_compute_forward_add_f32(
     const int nth = params->nth;
 
 #ifdef GGML_USE_CLBLAST
-    if (src1->backend == GGML_BACKEND_GPU) {
+    if (isOpenCLSupported && src1->backend == GGML_BACKEND_GPU) {
         // TODO: OpenCL kernel support full broadcast
         GGML_ASSERT(ggml_can_repeat_rows(src1, src0));
         if (ith == 0) {
@@ -8264,7 +8268,7 @@ static void ggml_compute_forward_mul_f32(
     const int nth = params->nth;
 
 #if defined(GGML_USE_CLBLAST)
-    if (src1->backend == GGML_BACKEND_GPU) {
+    if (isOpenCLSupported && src1->backend == GGML_BACKEND_GPU) {
         // TODO: OpenCL kernel support full broadcast
         GGML_ASSERT(ggml_can_repeat_rows(src1, src0));
         if (ith == 0) {
@@ -10327,7 +10331,7 @@ static void ggml_compute_forward_mul_mat(
     //   compute by src0 rows
 
 #if defined(GGML_USE_CLBLAST)
-    if (ggml_cl_can_mul_mat(src0, src1, dst)) {
+    if (isOpenCLSupported && ggml_cl_can_mul_mat(src0, src1, dst)) {
         if (params->ith == 0 && params->type == GGML_TASK_COMPUTE) {
             ggml_cl_mul_mat(src0, src1, dst, params->wdata, params->wsize);
         }
@@ -17607,7 +17611,7 @@ struct ggml_cplan ggml_graph_plan(const struct ggml_cgraph * cgraph, int n_threa
                     const enum ggml_type vec_dot_type = type_traits[node->src[0]->type].vec_dot_type;
 
 #if defined(GGML_USE_CLBLAST)
-                    if (ggml_cl_can_mul_mat(node->src[0], node->src[1], node)) {
+                    if (isOpenCLSupported && ggml_cl_can_mul_mat(node->src[0], node->src[1], node)) {
                         cur = ggml_cl_mul_mat_get_wsize(node->src[0], node->src[1], node);
                     } else
 #endif
@@ -21076,7 +21080,9 @@ int ggml_cpu_has_wasm_simd(void) {
 }
 
 int ggml_cpu_has_blas(void) {
-#if defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS) || defined(GGML_USE_CUBLAS) || defined(GGML_USE_VULKAN) || defined(GGML_USE_CLBLAST) || defined(GGML_USE_SYCL)
+#if defined(GGML_USE_CLBLAST)
+    return isOpenCLSupported ? 1 : 0;
+#elif defined(GGML_USE_ACCELERATE) || defined(GGML_USE_OPENBLAS) || defined(GGML_USE_CUBLAS) || defined(GGML_USE_VULKAN) || defined(GGML_USE_SYCL)
     return 1;
 #else
     return 0;
@@ -21093,7 +21099,7 @@ int ggml_cpu_has_cublas(void) {
 
 int ggml_cpu_has_clblast(void) {
 #if defined(GGML_USE_CLBLAST)
-    return 1;
+    return isOpenCLSupported ? 1 : 0;
 #else
     return 0;
 #endif

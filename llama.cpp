@@ -1436,7 +1436,9 @@ static ggml_backend_buffer_type_t llama_default_buffer_type_offload(int gpu) {
 #elif defined(GGML_USE_SYCL)
     buft = ggml_backend_sycl_buffer_type(gpu);
 #elif defined(GGML_USE_CLBLAST)
-    buft = ggml_backend_opencl_buffer_type();
+    if (isOpenCLSupported) {
+        buft = ggml_backend_opencl_buffer_type();
+    }
 #elif defined(GGML_USE_KOMPUTE)
     buft = ggml_backend_kompute_buffer_type(gpu);
     if (buft == nullptr) {
@@ -1978,7 +1980,9 @@ static bool llama_kv_cache_init(
     cache.cells.resize(n_ctx);
 
 #ifdef GGML_USE_CLBLAST
-    offload = false;
+    if (isOpenCLSupported) {
+        offload = false;
+    }
 #endif
 
     // count used buffer types
@@ -11436,7 +11440,9 @@ bool llama_supports_mlock(void) {
 }
 
 bool llama_supports_gpu_offload(void) {
-#if defined(GGML_USE_CUBLAS) || defined(GGML_USE_CLBLAST) || defined(GGML_USE_METAL) || defined(GGML_USE_VULKAN) || \
+#if defined(GGML_USE_CLBLAST)
+    return isOpenCLSupported;
+#elif defined(GGML_USE_CUBLAS) || defined(GGML_USE_METAL) || defined(GGML_USE_VULKAN) || \
     defined(GGML_USE_SYCL)   || defined(GGML_USE_KOMPUTE)
     // Defined when llama.cpp is compiled with support for offloading model layers to GPU.
     return true;
