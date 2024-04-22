@@ -11,7 +11,10 @@
 *.gcda
 *.dot
 *.bat
+*.tmp
 *.metallib
+*.etag
+*.lastModified
 .DS_Store
 .build/
 .cache/
@@ -25,10 +28,13 @@
 .vscode/
 .idea/
 
+ggml-metal-embed.metal
+
 lcov-report/
 gcovr-report/
 
 build*
+!build.zig
 cmake-build-*
 out/
 tmp/
@@ -43,8 +49,11 @@ models-mnt
 /convert-llama2c-to-ggml
 /embd-input-test
 /embedding
+/eval-callback
 /gguf
 /gguf-llama-simple
+/gguf-split
+/gritlm
 /imatrix
 /infill
 /libllama.so
@@ -52,6 +61,9 @@ models-mnt
 /llava-cli
 /lookahead
 /lookup
+/lookup-create
+/lookup-merge
+/lookup-stats
 /main
 /metal
 /passkey
@@ -67,6 +79,7 @@ models-mnt
 /batched-bench
 /export-lora
 /finetune
+/retrieval
 /speculative
 /parallel
 /train-text-from-scratch
@@ -88,6 +101,9 @@ qnt-*.txt
 perf-*.txt
 
 examples/jeopardy/results.txt
+examples/server/*.html.hpp
+examples/server/*.js.hpp
+examples/server/*.mjs.hpp
 
 poetry.lock
 poetry.toml
