@@ -5,8 +5,9 @@ Fast, lightweight, pure C/C++ HTTP server based on [httplib](https://github.com/
 Set of LLM REST APIs and a simple web front end to interact with llama.cpp.
 
 **Features:**
- * LLM inference of F16 and quantum models on GPU and CPU
+ * LLM inference of F16 and quantized models on GPU and CPU
  * [OpenAI API](https://github.com/openai/openai-openapi) compatible chat completions and embeddings routes
+ * Reranking endoint (WIP: https://github.com/ggerganov/llama.cpp/pull/9510)
  * Parallel decoding with multi-user support
  * Continuous batching
  * Multimodal (wip)
@@ -15,77 +16,189 @@ Set of LLM REST APIs and a simple web front end to interact with llama.cpp.
 
 The project is under active development, and we are [looking for feedback and contributors](https://github.com/ggerganov/llama.cpp/issues/4216).
 
-**Command line options:**
+## Usage
 
-- `--threads N`, `-t N`: Set the number of threads to use during generation. Not used if model layers are offloaded to GPU. The server is using batching. This parameter is used only if one token is to be processed on CPU backend.
-- `-tb N, --threads-batch N`: Set the number of threads to use during batch and prompt processing. If not specified, the number of threads will be set to the number of threads used for generation. Not used if model layers are offloaded to GPU.
-- `--threads-http N`: Number of threads in the http server pool to process requests. Default: `max(std::thread::hardware_concurrency() - 1, --parallel N + 2)`
-- `-m FNAME`, `--model FNAME`: Specify the path to the LLaMA model file (e.g., `models/7B/ggml-model.gguf`).
-- `-mu MODEL_URL --model-url MODEL_URL`: Specify a remote http url to download the file. Default: unused
-- `-hfr REPO, --hf-repo REPO`: Hugging Face model repository. Default: unused
-- `-hff FILE, --hf-file FILE`: Hugging Face model file. Default: unused
-- `-a ALIAS`, `--alias ALIAS`: Set an alias for the model. The alias will be returned in API responses.
-- `-c N`, `--ctx-size N`: Set the size of the prompt context. The default is `512`, but LLaMA models were built with a context of `2048`, which will provide better results for longer input/inference. The size may differ in other models, for example, baichuan models were build with a context of `4096`.
-- `-ngl N`, `--n-gpu-layers N`: When compiled with GPU support, this option allows offloading some layers to the GPU for computation. Generally results in increased performance.
-- `-mg i, --main-gpu i`: When using multiple GPUs, this option controls which GPU is used for small tensors for which the overhead of splitting the computation across all GPUs is not worthwhile. The GPU in question will use slightly more VRAM to store a scratch buffer for temporary results. By default, GPU `0` is used.
-- `-ts SPLIT, --tensor-split SPLIT`: When using multiple GPUs, this option controls how large tensors should be split across all GPUs. `SPLIT` is a comma-separated list of non-negative values that assigns the proportion of data that each GPU should get in order. For example, "3,2" will assign 60% of the data to GPU 0 and 40% to GPU 1. By default, the data is split in proportion to VRAM, but this may not be optimal for performance.
-- `-b N`, `--batch-size N`: Set the batch size for prompt processing. Default: `2048`
-- `-ub N`, `--ubatch-size N`: Physical maximum batch size. Default: `512`
-- `--mlock`: Lock the model in memory, preventing it from being swapped out when memory-mapped.
-- `--no-mmap`: Do not memory-map the model. By default, models are mapped into memory, which allows the system to load only the necessary parts of the model as needed.
-- `--numa STRATEGY`: Attempt one of the below optimization strategies that may help on some NUMA systems
-- `--numa distribute`: Spread execution evenly over all nodes
-- `--numa isolate`: Only spawn threads on CPUs on the node that execution started on
-- `--numa numactl`: Use the CPU map provided by numactl. If run without this previously, it is recommended to drop the system
-page cache before using this. See https://github.com/ggerganov/llama.cpp/issues/1437
+**Common params**
 
-- `--numa`: Attempt optimizations that may help on some NUMA systems.
-- `--lora FNAME`: Apply a LoRA (Low-Rank Adaptation) adapter to the model (implies --no-mmap). This allows you to adapt the pretrained model to specific tasks or domains.
-- `--lora-base FNAME`: Optional model to use as a base for the layers modified by the LoRA adapter. This flag is used in conjunction with the `--lora` flag, and specifies the base model for the adaptation.
-- `-to N`, `--timeout N`: Server read/write timeout in seconds. Default `600`
-- `--host`: Set the hostname or ip address to listen. Default `127.0.0.1`
-- `--port`: Set the port to listen. Default: `8080`
-- `--path`: Path from which to serve static files. Default: disabled
-- `--api-key`: Set an api key for request authorization. By default, the server responds to every request. With an api key set, the requests must have the Authorization header set with the api key as Bearer token. May be used multiple times to enable multiple valid keys.
-- `--api-key-file`: Path to file containing api keys delimited by new lines. If set, requests must include one of the keys for access. May be used in conjunction with `--api-key`s.
-- `--embedding`: Enable embedding extraction. Default: disabled
-- `-np N`, `--parallel N`: Set the number of slots for process requests. Default: `1`
-- `-cb`, `--cont-batching`: Enable continuous batching (a.k.a dynamic batching).  Default: disabled
-- `-spf FNAME`, `--system-prompt-file FNAME` Set a file to load a system prompt (initial prompt of all slots). This is useful for chat applications. [See more](#change-system-prompt-on-runtime)
-- `--mmproj MMPROJ_FILE`: Path to a multimodal projector file for LLaVA.
-- `--grp-attn-n`: Set the group attention factor to extend context size through self-extend. Used together with group attention width `--grp-attn-w`. Default: `1`, which is disabled.
-- `--grp-attn-w`: Set the group attention width to extend context size through self-extend.  Used together with group attention factor `--grp-attn-n`. Default: `512`
-- `-n N, --n-predict N`: Set the maximum tokens to predict. Default: `-1`
-- `--slots-endpoint-disable`: To disable slots state monitoring endpoint. Slots state may contain user data, prompts included.
-- `--metrics`: enable prometheus `/metrics` compatible endpoint. Default: disabled
-- `--slot-save-path PATH`: Specifies the path where the state of slots (the prompt cache) can be stored. If not provided, the slot management endpoints will be disabled.
-- `--chat-template JINJA_TEMPLATE`: Set custom jinja chat template. This parameter accepts a string, not a file name.  Default: template taken from model's metadata. We only support [some pre-defined templates](https://github.com/ggerganov/llama.cpp/wiki/Templates-supported-by-llama_chat_apply_template)
-- `--log-disable`: Output logs to stdout only, not to `llama.log`. Default: enabled
-- `--log-format FORMAT`: Define the log output to FORMAT: json or text Default: `json`
+| Argument | Explanation |
+| -------- | ----------- |
+| `-h, --help, --usage` | print usage and exit |
+| `--version` | show version and build info |
+| `--verbose-prompt` | print a verbose prompt before generation (default: false) |
+| `-t, --threads N` | number of threads to use during generation (default: -1)<br/>(env: LLAMA_ARG_THREADS) |
+| `-tb, --threads-batch N` | number of threads to use during batch and prompt processing (default: same as --threads) |
+| `-C, --cpu-mask M` | CPU affinity mask: arbitrarily long hex. Complements cpu-range (default: "") |
+| `-Cr, --cpu-range lo-hi` | range of CPUs for affinity. Complements --cpu-mask |
+| `--cpu-strict <0\|1>` | use strict CPU placement (default: 0)<br/> |
+| `--prio N` | set process/thread priority : 0-normal, 1-medium, 2-high, 3-realtime (default: 0)<br/> |
+| `--poll <0...100>` | use polling level to wait for work (0 - no polling, default: 50)<br/> |
+| `-Cb, --cpu-mask-batch M` | CPU affinity mask: arbitrarily long hex. Complements cpu-range-batch (default: same as --cpu-mask) |
+| `-Crb, --cpu-range-batch lo-hi` | ranges of CPUs for affinity. Complements --cpu-mask-batch |
+| `--cpu-strict-batch <0\|1>` | use strict CPU placement (default: same as --cpu-strict) |
+| `--prio-batch N` | set process/thread priority : 0-normal, 1-medium, 2-high, 3-realtime (default: 0)<br/> |
+| `--poll-batch <0\|1>` | use polling to wait for work (default: same as --poll) |
+| `-c, --ctx-size N` | size of the prompt context (default: 0, 0 = loaded from model)<br/>(env: LLAMA_ARG_CTX_SIZE) |
+| `-n, --predict, --n-predict N` | number of tokens to predict (default: -1, -1 = infinity, -2 = until context filled)<br/>(env: LLAMA_ARG_N_PREDICT) |
+| `-b, --batch-size N` | logical maximum batch size (default: 2048)<br/>(env: LLAMA_ARG_BATCH) |
+| `-ub, --ubatch-size N` | physical maximum batch size (default: 512)<br/>(env: LLAMA_ARG_UBATCH) |
+| `--keep N` | number of tokens to keep from the initial prompt (default: 0, -1 = all) |
+| `-fa, --flash-attn` | enable Flash Attention (default: disabled)<br/>(env: LLAMA_ARG_FLASH_ATTN) |
+| `-p, --prompt PROMPT` | prompt to start generation with |
+| `--no-perf` | disable internal libllama performance timings (default: false)<br/>(env: LLAMA_ARG_NO_PERF) |
+| `-f, --file FNAME` | a file containing the prompt (default: none) |
+| `-bf, --binary-file FNAME` | binary file containing the prompt (default: none) |
+| `-e, --escape` | process escapes sequences (\n, \r, \t, \', \", \\) (default: true) |
+| `--no-escape` | do not process escape sequences |
+| `--rope-scaling {none,linear,yarn}` | RoPE frequency scaling method, defaults to linear unless specified by the model<br/>(env: LLAMA_ARG_ROPE_SCALING_TYPE) |
+| `--rope-scale N` | RoPE context scaling factor, expands context by a factor of N<br/>(env: LLAMA_ARG_ROPE_SCALE) |
+| `--rope-freq-base N` | RoPE base frequency, used by NTK-aware scaling (default: loaded from model)<br/>(env: LLAMA_ARG_ROPE_FREQ_BASE) |
+| `--rope-freq-scale N` | RoPE frequency scaling factor, expands context by a factor of 1/N<br/>(env: LLAMA_ARG_ROPE_FREQ_SCALE) |
+| `--yarn-orig-ctx N` | YaRN: original context size of model (default: 0 = model training context size)<br/>(env: LLAMA_ARG_YARN_ORIG_CTX) |
+| `--yarn-ext-factor N` | YaRN: extrapolation mix factor (default: -1.0, 0.0 = full interpolation)<br/>(env: LLAMA_ARG_YARN_EXT_FACTOR) |
+| `--yarn-attn-factor N` | YaRN: scale sqrt(t) or attention magnitude (default: 1.0)<br/>(env: LLAMA_ARG_YARN_ATTN_FACTOR) |
+| `--yarn-beta-slow N` | YaRN: high correction dim or alpha (default: 1.0)<br/>(env: LLAMA_ARG_YARN_BETA_SLOW) |
+| `--yarn-beta-fast N` | YaRN: low correction dim or beta (default: 32.0)<br/>(env: LLAMA_ARG_YARN_BETA_FAST) |
+| `-gan, --grp-attn-n N` | group-attention factor (default: 1)<br/>(env: LLAMA_ARG_GRP_ATTN_N) |
+| `-gaw, --grp-attn-w N` | group-attention width (default: 512.0)<br/>(env: LLAMA_ARG_GRP_ATTN_W) |
+| `-dkvc, --dump-kv-cache` | verbose print of the KV cache |
+| `-nkvo, --no-kv-offload` | disable KV offload<br/>(env: LLAMA_ARG_NO_KV_OFFLOAD) |
+| `-ctk, --cache-type-k TYPE` | KV cache data type for K (default: f16)<br/>(env: LLAMA_ARG_CACHE_TYPE_K) |
+| `-ctv, --cache-type-v TYPE` | KV cache data type for V (default: f16)<br/>(env: LLAMA_ARG_CACHE_TYPE_V) |
+| `-dt, --defrag-thold N` | KV cache defragmentation threshold (default: -1.0, < 0 - disabled)<br/>(env: LLAMA_ARG_DEFRAG_THOLD) |
+| `-np, --parallel N` | number of parallel sequences to decode (default: 1)<br/>(env: LLAMA_ARG_N_PARALLEL) |
+| `--mlock` | force system to keep model in RAM rather than swapping or compressing<br/>(env: LLAMA_ARG_MLOCK) |
+| `--no-mmap` | do not memory-map model (slower load but may reduce pageouts if not using mlock)<br/>(env: LLAMA_ARG_NO_MMAP) |
+| `--numa TYPE` | attempt optimizations that help on some NUMA systems<br/>- distribute: spread execution evenly over all nodes<br/>- isolate: only spawn threads on CPUs on the node that execution started on<br/>- numactl: use the CPU map provided by numactl<br/>if run without this previously, it is recommended to drop the system page cache before using this<br/>see https://github.com/ggerganov/llama.cpp/issues/1437<br/>(env: LLAMA_ARG_NUMA) |
+| `-ngl, --gpu-layers, --n-gpu-layers N` | number of layers to store in VRAM<br/>(env: LLAMA_ARG_N_GPU_LAYERS) |
+| `-sm, --split-mode {none,layer,row}` | how to split the model across multiple GPUs, one of:<br/>- none: use one GPU only<br/>- layer (default): split layers and KV across GPUs<br/>- row: split rows across GPUs<br/>(env: LLAMA_ARG_SPLIT_MODE) |
+| `-ts, --tensor-split N0,N1,N2,...` | fraction of the model to offload to each GPU, comma-separated list of proportions, e.g. 3,1<br/>(env: LLAMA_ARG_TENSOR_SPLIT) |
+| `-mg, --main-gpu INDEX` | the GPU to use for the model (with split-mode = none), or for intermediate results and KV (with split-mode = row) (default: 0)<br/>(env: LLAMA_ARG_MAIN_GPU) |
+| `--check-tensors` | check model tensor data for invalid values (default: false) |
+| `--override-kv KEY=TYPE:VALUE` | advanced option to override model metadata by key. may be specified multiple times.<br/>types: int, float, bool, str. example: --override-kv tokenizer.ggml.add_bos_token=bool:false |
+| `--lora FNAME` | path to LoRA adapter (can be repeated to use multiple adapters) |
+| `--lora-scaled FNAME SCALE` | path to LoRA adapter with user defined scaling (can be repeated to use multiple adapters) |
+| `--control-vector FNAME` | add a control vector<br/>note: this argument can be repeated to add multiple control vectors |
+| `--control-vector-scaled FNAME SCALE` | add a control vector with user defined scaling SCALE<br/>note: this argument can be repeated to add multiple scaled control vectors |
+| `--control-vector-layer-range START END` | layer range to apply the control vector(s) to, start and end inclusive |
+| `-m, --model FNAME` | model path (default: `models/$filename` with filename from `--hf-file` or `--model-url` if set, otherwise models/7B/ggml-model-f16.gguf)<br/>(env: LLAMA_ARG_MODEL) |
+| `-mu, --model-url MODEL_URL` | model download url (default: unused)<br/>(env: LLAMA_ARG_MODEL_URL) |
+| `-hfr, --hf-repo REPO` | Hugging Face model repository (default: unused)<br/>(env: LLAMA_ARG_HF_REPO) |
+| `-hff, --hf-file FILE` | Hugging Face model file (default: unused)<br/>(env: LLAMA_ARG_HF_FILE) |
+| `-hft, --hf-token TOKEN` | Hugging Face access token (default: value from HF_TOKEN environment variable)<br/>(env: HF_TOKEN) |
+| `-ld, --logdir LOGDIR` | path under which to save YAML logs (no logging if unset) |
+| `--log-disable` | Log disable |
+| `--log-file FNAME` | Log to file |
+| `--log-colors` | Enable colored logging<br/>(env: LLAMA_LOG_COLORS) |
+| `-v, --verbose, --log-verbose` | Set verbosity level to infinity (i.e. log all messages, useful for debugging) |
+| `-lv, --verbosity, --log-verbosity N` | Set the verbosity threshold. Messages with a higher verbosity will be ignored.<br/>(env: LLAMA_LOG_VERBOSITY) |
+| `--log-prefix` | Enable prefx in log messages<br/>(env: LLAMA_LOG_PREFIX) |
+| `--log-timestamps` | Enable timestamps in log messages<br/>(env: LLAMA_LOG_TIMESTAMPS) |
 
-**If compiled with `LLAMA_SERVER_SSL=ON`**
-- `--ssl-key-file FNAME`: path to file a PEM-encoded SSL private key
-- `--ssl-cert-file FNAME`: path to file a PEM-encoded SSL certificate
+
+**Sampling params**
+
+| Argument | Explanation |
+| -------- | ----------- |
+| `--samplers SAMPLERS` | samplers that will be used for generation in the order, separated by ';'<br/>(default: top_k;tfs_z;typ_p;top_p;min_p;temperature) |
+| `-s, --seed SEED` | RNG seed (default: 4294967295, use random seed for 4294967295) |
+| `--sampling-seq SEQUENCE` | simplified sequence for samplers that will be used (default: kfypmt) |
+| `--ignore-eos` | ignore end of stream token and continue generating (implies --logit-bias EOS-inf) |
+| `--penalize-nl` | penalize newline tokens (default: false) |
+| `--temp N` | temperature (default: 0.8) |
+| `--top-k N` | top-k sampling (default: 40, 0 = disabled) |
+| `--top-p N` | top-p sampling (default: 0.9, 1.0 = disabled) |
+| `--min-p N` | min-p sampling (default: 0.1, 0.0 = disabled) |
+| `--tfs N` | tail free sampling, parameter z (default: 1.0, 1.0 = disabled) |
+| `--typical N` | locally typical sampling, parameter p (default: 1.0, 1.0 = disabled) |
+| `--repeat-last-n N` | last n tokens to consider for penalize (default: 64, 0 = disabled, -1 = ctx_size) |
+| `--repeat-penalty N` | penalize repeat sequence of tokens (default: 1.0, 1.0 = disabled) |
+| `--presence-penalty N` | repeat alpha presence penalty (default: 0.0, 0.0 = disabled) |
+| `--frequency-penalty N` | repeat alpha frequency penalty (default: 0.0, 0.0 = disabled) |
+| `--dynatemp-range N` | dynamic temperature range (default: 0.0, 0.0 = disabled) |
+| `--dynatemp-exp N` | dynamic temperature exponent (default: 1.0) |
+| `--mirostat N` | use Mirostat sampling.<br/>Top K, Nucleus, Tail Free and Locally Typical samplers are ignored if used.<br/>(default: 0, 0 = disabled, 1 = Mirostat, 2 = Mirostat 2.0) |
+| `--mirostat-lr N` | Mirostat learning rate, parameter eta (default: 0.1) |
+| `--mirostat-ent N` | Mirostat target entropy, parameter tau (default: 5.0) |
+| `-l, --logit-bias TOKEN_ID(+/-)BIAS` | modifies the likelihood of token appearing in the completion,<br/>i.e. `--logit-bias 15043+1` to increase likelihood of token ' Hello',<br/>or `--logit-bias 15043-1` to decrease likelihood of token ' Hello' |
+| `--grammar GRAMMAR` | BNF-like grammar to constrain generations (see samples in grammars/ dir) (default: '') |
+| `--grammar-file FNAME` | file to read grammar from |
+| `-j, --json-schema SCHEMA` | JSON schema to constrain generations (https://json-schema.org/), e.g. `{}` for any JSON object<br/>For schemas w/ external $refs, use --grammar + example/json_schema_to_grammar.py instead |
+
+
+**Example-specific params**
+
+| Argument | Explanation |
+| -------- | ----------- |
+| `--no-context-shift` | disables context shift on inifinite text generation (default: disabled)<br/>(env: LLAMA_ARG_NO_CONTEXT_SHIFT) |
+| `-sp, --special` | special tokens output enabled (default: false) |
+| `--spm-infill` | use Suffix/Prefix/Middle pattern for infill (instead of Prefix/Suffix/Middle) as some models prefer this. (default: disabled) |
+| `--pooling {none,mean,cls,last,rank}` | pooling type for embeddings, use model default if unspecified<br/>(env: LLAMA_ARG_POOLING) |
+| `-cb, --cont-batching` | enable continuous batching (a.k.a dynamic batching) (default: enabled)<br/>(env: LLAMA_ARG_CONT_BATCHING) |
+| `-nocb, --no-cont-batching` | disable continuous batching<br/>(env: LLAMA_ARG_NO_CONT_BATCHING) |
+| `-a, --alias STRING` | set alias for model name (to be used by REST API)<br/>(env: LLAMA_ARG_ALIAS) |
+| `--host HOST` | ip address to listen (default: 127.0.0.1)<br/>(env: LLAMA_ARG_HOST) |
+| `--port PORT` | port to listen (default: 8080)<br/>(env: LLAMA_ARG_PORT) |
+| `--path PATH` | path to serve static files from (default: )<br/>(env: LLAMA_ARG_STATIC_PATH) |
+| `--embedding, --embeddings` | restrict to only support embedding use case; use only with dedicated embedding models (default: disabled)<br/>(env: LLAMA_ARG_EMBEDDINGS) |
+| `--reranking, --rerank` | enable reranking endpoint on server (default: disabled)<br/>(env: LLAMA_ARG_RERANKING) |
+| `--api-key KEY` | API key to use for authentication (default: none)<br/>(env: LLAMA_API_KEY) |
+| `--api-key-file FNAME` | path to file containing API keys (default: none) |
+| `--ssl-key-file FNAME` | path to file a PEM-encoded SSL private key<br/>(env: LLAMA_ARG_SSL_KEY_FILE) |
+| `--ssl-cert-file FNAME` | path to file a PEM-encoded SSL certificate<br/>(env: LLAMA_ARG_SSL_CERT_FILE) |
+| `-to, --timeout N` | server read/write timeout in seconds (default: 600)<br/>(env: LLAMA_ARG_TIMEOUT) |
+| `--threads-http N` | number of threads used to process HTTP requests (default: -1)<br/>(env: LLAMA_ARG_THREADS_HTTP) |
+| `-spf, --system-prompt-file FNAME` | set a file to load a system prompt (initial prompt of all slots), this is useful for chat applications |
+| `--metrics` | enable prometheus compatible metrics endpoint (default: disabled)<br/>(env: LLAMA_ARG_ENDPOINT_METRICS) |
+| `--no-slots` | disables slots monitoring endpoint (default: enabled)<br/>(env: LLAMA_ARG_NO_ENDPOINT_SLOTS) |
+| `--slot-save-path PATH` | path to save slot kv cache (default: disabled) |
+| `--chat-template JINJA_TEMPLATE` | set custom jinja chat template (default: template taken from model's metadata)<br/>if suffix/prefix are specified, template will be disabled<br/>only commonly used templates are accepted:<br/>https://github.com/ggerganov/llama.cpp/wiki/Templates-supported-by-llama_chat_apply_template<br/>(env: LLAMA_ARG_CHAT_TEMPLATE) |
+| `-sps, --slot-prompt-similarity SIMILARITY` | how much the prompt of a request must match the prompt of a slot in order to use that slot (default: 0.50, 0.0 = disabled)<br/> |
+| `--lora-init-without-apply` | load LoRA adapters without applying them (apply later via POST /lora-adapters) (default: disabled) |
+
+
+Note: If both command line argument and environment variable are both set for the same param, the argument will take precedence over env var.
+
+Example usage of docker compose with environment variables:
+
+```yml
+services:
+  llamacpp-server:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    ports:
+      - 8080:8080
+    volumes:
+      - ./models:/models
+    environment:
+      # alternatively, you can use "LLAMA_ARG_MODEL_URL" to download the model
+      LLAMA_ARG_MODEL: /models/my_model.gguf
+      LLAMA_ARG_CTX_SIZE: 4096
+      LLAMA_ARG_N_PARALLEL: 2
+      LLAMA_ARG_ENDPOINT_METRICS: 1
+      LLAMA_ARG_PORT: 8080
+```
 
 ## Build
 
-`server` is built alongside everything else from the root of the project
+`llama-server` is built alongside everything else from the root of the project
 
 - Using `make`:
 
   ```bash
-  make
+  make llama-server
   ```
 
 - Using `CMake`:
 
   ```bash
-  cmake --build . --config Release
+  cmake -B build
+  cmake --build build --config Release -t llama-server
   ```
+
+  Binary is at `./build/bin/llama-server`
 
 ## Build with SSL
 
-`server` can also be built with SSL support using OpenSSL 3
+`llama-server` can also be built with SSL support using OpenSSL 3
 
 - Using `make`:
 
@@ -93,16 +206,14 @@ page cache before using this. See https://github.com/ggerganov/llama.cpp/issues/
   # NOTE: For non-system openssl, use the following:
   #   CXXFLAGS="-I /path/to/openssl/include"
   #   LDFLAGS="-L /path/to/openssl/lib"
-  make LLAMA_SERVER_SSL=true server
+  make LLAMA_SERVER_SSL=true llama-server
   ```
 
 - Using `CMake`:
 
   ```bash
-  mkdir build
-  cd build
-  cmake .. -DLLAMA_SERVER_SSL=ON
-  make server
+  cmake -B build -DLLAMA_SERVER_SSL=ON
+  cmake --build build --config Release -t llama-server
   ```
 
 ## Quick Start
@@ -112,13 +223,13 @@ To get started right away, run the following command, making sure to use the cor
 ### Unix-based systems (Linux, macOS, etc.)
 
 ```bash
-./server -m models/7B/ggml-model.gguf -c 2048
+./llama-server -m models/7B/ggml-model.gguf -c 2048
 ```
 
 ### Windows
 
 ```powershell
-server.exe -m models\7B\ggml-model.gguf -c 2048
+llama-server.exe -m models\7B\ggml-model.gguf -c 2048
 ```
 
 The above command will start a server that by default listens on `127.0.0.1:8080`.
@@ -186,16 +297,18 @@ node index.js
 
 ## API Endpoints
 
-- **GET** `/health`: Returns the current state of the server:
-  - 503 -> `{"status": "loading model"}` if the model is still being loaded.
-  - 500 -> `{"status": "error"}` if the model failed to load.
-  - 200 -> `{"status": "ok", "slots_idle": 1, "slots_processing": 2 }` if the model is successfully loaded and the server is ready for further requests mentioned below.
-  - 200 -> `{"status": "no slot available", "slots_idle": 0, "slots_processing": 32}` if no slots are currently available.
-  - 503 -> `{"status": "no slot available", "slots_idle": 0, "slots_processing": 32}` if the query parameter `fail_on_no_slot` is provided and no slots are currently available.
+### GET `/health`: Returns heath check result
 
-  If the query parameter `include_slots` is passed, `slots` field will contain internal slots data except if `--slots-endpoint-disable` is set.
+**Response format**
 
-- **POST** `/completion`: Given a `prompt`, it returns the predicted completion.
+- HTTP status code 503
+  - Body: `{"error": {"code": 503, "message": "Loading model", "type": "unavailable_error"}}`
+  - Explanation: the model is still being loaded.
+- HTTP status code 200
+  - Body: `{"status": "ok" }`
+  - Explanation: the model is successfully loaded and the server is ready.
+
+### POST `/completion`: Given a `prompt`, it returns the predicted completion.
 
     *Options:*
 
@@ -219,7 +332,7 @@ node index.js
 
     `n_predict`: Set the maximum number of tokens to predict when generating text. **Note:** May exceed the set limit slightly if the last token is a partial multibyte character. When 0, no tokens will be generated but the prompt is evaluated into the cache. Default: `-1`, where `-1` is infinity.
 
-    `n_keep`: Specify the number of tokens from the prompt to retain when the context size is exceeded and tokens need to be discarded.
+    `n_keep`: Specify the number of tokens from the prompt to retain when the context size is exceeded and tokens need to be discarded. The number excludes the BOS token.
     By default, this value is set to `0`, meaning no tokens are kept. Use `-1` to retain all tokens from the prompt.
 
     `stream`: It allows receiving each predicted token in real-time instead of waiting for the completion to finish. To enable this, set to `true`.
@@ -241,8 +354,6 @@ node index.js
 
     `frequency_penalty`: Repeat alpha frequency penalty. Default: `0.0`, which is disabled.
 
-    `penalty_prompt`: This will replace the `prompt` for the purpose of the penalty evaluation. Can be either `null`, a string or an array of numbers representing tokens. Default: `null`, which is to use the original `prompt`.
-
     `mirostat`: Enable Mirostat sampling, controlling perplexity during text generation. Default: `0`, where `0` is disabled, `1` is Mirostat, and `2` is Mirostat 2.0.
 
     `mirostat_tau`: Set the Mirostat target entropy, parameter tau. Default: `5.0`
@@ -259,7 +370,7 @@ node index.js
 
     `logit_bias`: Modify the likelihood of a token appearing in the generated text completion. For example, use `"logit_bias": [[15043,1.0]]` to increase the likelihood of the token 'Hello', or `"logit_bias": [[15043,-1.0]]` to decrease its likelihood. Setting the value to false, `"logit_bias": [[15043,false]]` ensures that the token `Hello` is never produced. The tokens can also be represented as strings, e.g. `[["Hello, World!",-0.5]]` will reduce the likelihood of all the individual tokens that represent the string `Hello, World!`, just like the `presence_penalty` does. Default: `[]`
 
-    `n_probs`: If greater than 0, the response also contains the probabilities of top N tokens for each generated token. Default: `0`
+    `n_probs`: If greater than 0, the response also contains the probabilities of top N tokens for each generated token given the sampling settings. Note that for temperature < 0 the tokens are sampled greedily but token probabilities are still being calculated via a simple softmax of the logits without considering any other sampler settings. Default: `0`
 
     `min_keep`: If greater than 0, force samplers to return N possible tokens at minimum. Default: `0`
 
@@ -267,13 +378,13 @@ node index.js
 
     `id_slot`: Assign the completion task to an specific slot. If is -1 the task will be assigned to a Idle slot.  Default: `-1`
 
-    `cache_prompt`: Re-use previously cached prompt from the last request if possible. This may prevent re-caching the prompt from scratch.  Default: `false`
+    `cache_prompt`: Re-use KV cache from a previous request if possible. This way the common prefix does not have to be re-processed, only the suffix that differs between the requests. Because (depending on the backend) the logits are **not** guaranteed to be bit-for-bit identical for different batch sizes (prompt processing vs. token generation) enabling this option can cause nondeterministic results. Default: `false`
 
     `system_prompt`: Change the system prompt (initial prompt of all slots), this is useful for chat applications. [See more](#change-system-prompt-on-runtime)
 
     `samplers`: The order the samplers should be applied in. An array of strings representing sampler type names. If a sampler is not set, it will not be used. If a sampler is specified more than once, it will be applied multiple times. Default: `["top_k", "tfs_z", "typical_p", "top_p", "min_p", "temperature"]` - these are all the available values.
 
-### Result JSON
+**Response format**
 
 - Note: When using streaming mode (`stream`), only `content` and `stop` will be returned until end of completion.
 
@@ -312,21 +423,58 @@ Notice that each `probs` is an array of length `n_probs`.
 - `tokens_evaluated`: Number of tokens evaluated in total from the prompt
 - `truncated`: Boolean indicating if the context size was exceeded during generation, i.e. the number of tokens provided in the prompt (`tokens_evaluated`) plus tokens generated (`tokens predicted`) exceeded the context size (`n_ctx`)
 
-- **POST** `/tokenize`: Tokenize a given text.
+### POST `/tokenize`: Tokenize a given text
 
     *Options:*
 
-    `content`: Set the text to tokenize.
+    `content`: (Required) The text to tokenize.
 
-    Note that a special `BOS` token is never inserted.
+    `add_special`: (Optional) Boolean indicating if special tokens, i.e. `BOS`, should be inserted.  Default: `false`
 
-- **POST** `/detokenize`: Convert tokens to text.
+    `with_pieces`: (Optional) Boolean indicating whether to return token pieces along with IDs.  Default: `false`
+
+**Response:**
+
+Returns a JSON object with a `tokens` field containing the tokenization result. The `tokens` array contains either just token IDs or objects with `id` and `piece` fields, depending on the `with_pieces` parameter. The piece field is a string if the piece is valid unicode or a list of bytes otherwise.
+
+
+If `with_pieces` is `false`:
+```json
+{
+  "tokens": [123, 456, 789]
+}
+```
+
+If `with_pieces` is `true`:
+```json
+{
+  "tokens": [
+    {"id": 123, "piece": "Hello"},
+    {"id": 456, "piece": " world"},
+    {"id": 789, "piece": "!"}
+  ]
+}
+```
+
+With input 'á' (utf8 hex: C3 A1) on tinyllama/stories260k
+```json
+{
+  "tokens": [
+    {"id": 198, "piece": [195]}, // hex C3
+    {"id": 164, "piece": [161]} // hex A1
+  ]
+}
+```
+
+### POST `/detokenize`: Convert tokens to text
 
     *Options:*
 
     `tokens`: Set the tokens to detokenize.
 
-- **POST** `/embedding`: Generate embedding of a given text just as [the embedding example](../embedding) does.
+### POST `/embedding`: Generate embedding of a given text
+
+The same as [the embedding example](../embedding) does.
 
     *Options:*
 
@@ -334,7 +482,42 @@ Notice that each `probs` is an array of length `n_probs`.
 
     `image_data`: An array of objects to hold base64-encoded image `data` and its `id`s to be reference in `content`. You can determine the place of the image in the content as in the following: `Image: [img-21].\nCaption: This is a picture of a house`. In this case, `[img-21]` will be replaced by the embeddings of the image with id `21` in the following `image_data` array: `{..., "image_data": [{"data": "<BASE64_STRING>", "id": 21}]}`. Use `image_data` only with multimodal models, e.g., LLaVA.
 
-- **POST** `/infill`: For code infilling. Takes a prefix and a suffix and returns the predicted completion as stream.
+### POST `/reranking`: Rerank documents according to a given query
+
+Similar to https://jina.ai/reranker/ but might change in the future.
+Requires a reranker model (such as [bge-reranker-v2-m3](https://huggingface.co/BAAI/bge-reranker-v2-m3)) and the `--embedding --pooling rank` options.
+
+    *Options:*
+
+    `query`: The query against which the documents will be ranked.
+
+    `documents`: An array strings representing the documents to be ranked.
+
+    *Aliases:*
+      - `/rerank`
+      - `/v1/rerank`
+      - `/v1/reranking`
+
+    *Examples:*
+
+    ```shell
+    curl http://127.0.0.1:8012/v1/rerank \
+        -H "Content-Type: application/json" \
+        -d '{
+            "model": "some-model",
+                "query": "What is panda?",
+                "top_n": 3,
+                "documents": [
+                    "hi",
+                "it is a bear",
+                "The giant panda (Ailuropoda melanoleuca), sometimes called a panda bear or simply panda, is a bear species endemic to China."
+                ]
+        }' | jq
+    ```
+
+### POST `/infill`: For code infilling.
+
+Takes a prefix and a suffix and returns the predicted completion as stream.
 
     *Options:*
 
@@ -346,14 +529,15 @@ Notice that each `probs` is an array of length `n_probs`.
 
 - **GET** `/props`: Return current server settings.
 
-### Result JSON
+**Response format**
 
 ```json
 {
   "assistant_name": "",
   "user_name": "",
   "default_generation_settings": { ... },
-  "total_slots": 1
+  "total_slots": 1,
+  "chat_template": ""
 }
 ```
 
@@ -361,14 +545,17 @@ Notice that each `probs` is an array of length `n_probs`.
 - `user_name` - the required anti-prompt to generate the prompt in case you have specified a system prompt for all slots.
 - `default_generation_settings` - the default generation settings for the `/completion` endpoint, which has the same fields as the `generation_settings` response object from the `/completion` endpoint.
 - `total_slots` - the total number of slots for process requests (defined by `--parallel` option)
+- `chat_template` - the model's original Jinja2 prompt template
 
-- **POST** `/v1/chat/completions`: OpenAI-compatible Chat Completions API. Given a ChatML-formatted json description in `messages`, it returns the predicted completion. Both synchronous and streaming mode are supported, so scripted and interactive applications work fine. While no strong claims of compatibility with OpenAI API spec is being made, in our experience it suffices to support many apps. Only model with [supported chat template](https://github.com/ggerganov/llama.cpp/wiki/Templates-supported-by-llama_chat_apply_template) can be used optimally with this endpoint. By default, ChatML template will be used.
+### POST `/v1/chat/completions`: OpenAI-compatible Chat Completions API
+
+Given a ChatML-formatted json description in `messages`, it returns the predicted completion. Both synchronous and streaming mode are supported, so scripted and interactive applications work fine. While no strong claims of compatibility with OpenAI API spec is being made, in our experience it suffices to support many apps. Only models with a [supported chat template](https://github.com/ggerganov/llama.cpp/wiki/Templates-supported-by-llama_chat_apply_template) can be used optimally with this endpoint. By default, the ChatML template will be used.
 
     *Options:*
 
     See [OpenAI Chat Completions API documentation](https://platform.openai.com/docs/api-reference/chat). While some OpenAI-specific features such as function calling aren't supported, llama.cpp `/completion`-specific features such as `mirostat` are supported.
 
-    The `response_format` parameter supports both plain JSON output (e.g. `{"type": "json_object"}`) and schema-constrained JSON (e.g. `{"type": "json_object", "schema": {"type": "string", "minLength": 10, "maxLength": 100}}`), similar to other OpenAI-inspired API providers.
+    The `response_format` parameter supports both plain JSON output (e.g. `{"type": "json_object"}`) and schema-constrained JSON (e.g. `{"type": "json_object", "schema": {"type": "string", "minLength": 10, "maxLength": 100}}` or `{"type": "json_schema", "schema": {"properties": { "name": { "title": "Name",  "type": "string" }, "date": { "title": "Date",  "type": "string" }, "participants": { "items": {"type: "string" }, "title": "Participants",  "type": "string" } } } }`), similar to other OpenAI-inspired API providers.
 
     *Examples:*
 
@@ -414,7 +601,7 @@ Notice that each `probs` is an array of length `n_probs`.
     }'
     ```
 
-- **POST** `/v1/embeddings`: OpenAI-compatible embeddings API.
+### POST `/v1/embeddings`: OpenAI-compatible embeddings API
 
     *Options:*
 
@@ -448,9 +635,15 @@ Notice that each `probs` is an array of length `n_probs`.
     }'
     ```
 
-- **GET** `/slots`: Returns the current slots processing state. Can be disabled with `--slots-endpoint-disable`.
+### GET `/slots`: Returns the current slots processing state
 
-### Result JSON
+This endpoint can be disabled with `--no-slots`
+
+If query param `?fail_on_no_slot=1` is set, this endpoint will respond with status code 503 if there is no available slots.
+
+**Response format**
+
+Example:
 
 ```json
 [
@@ -481,7 +674,6 @@ Notice that each `probs` is an array of length `n_probs`.
             "stopping_word": ""
         },
         "penalize_nl": true,
-        "penalty_prompt_tokens": [],
         "presence_penalty": 0.0,
         "prompt": "Say hello to llama.cpp",
         "repeat_last_n": 64,
@@ -505,13 +697,18 @@ Notice that each `probs` is an array of length `n_probs`.
         "tfs_z": 1.0,
         "top_k": 40,
         "top_p": 0.949999988079071,
-        "typical_p": 1.0,
-        "use_penalty_prompt_tokens": false
+        "typical_p": 1.0
     }
 ]
 ```
 
-- **GET** `/metrics`: [Prometheus](https://prometheus.io/) compatible metrics exporter endpoint if `--metrics` is enabled:
+Possible values for `slot[i].state` are:
+- `0`: SLOT_STATE_IDLE
+- `1`: SLOT_STATE_PROCESSING
+
+### GET `/metrics`: Prometheus compatible metrics exporter
+
+This endpoint is only accessible if `--metrics` is set.
 
 Available metrics:
 - `llamacpp:prompt_tokens_total`: Number of prompt tokens processed.
@@ -523,13 +720,13 @@ Available metrics:
 - `llamacpp:requests_processing`: Number of requests processing.
 - `llamacpp:requests_deferred`: Number of requests deferred.
 
-- **POST** `/slots/{id_slot}?action=save`: Save the prompt cache of the specified slot to a file.
+### POST `/slots/{id_slot}?action=save`: Save the prompt cache of the specified slot to a file.
 
     *Options:*
 
     `filename`: Name of the file to save the slot's prompt cache. The file will be saved in the directory specified by the `--slot-save-path` server parameter.
 
-### Result JSON
+**Response format**
 
 ```json
 {
@@ -543,13 +740,13 @@ Available metrics:
 }
 ```
 
-- **POST** `/slots/{id_slot}?action=restore`: Restore the prompt cache of the specified slot from a file.
+### POST `/slots/{id_slot}?action=restore`: Restore the prompt cache of the specified slot from a file.
 
     *Options:*
 
     `filename`: Name of the file to restore the slot's prompt cache from. The file should be located in the directory specified by the `--slot-save-path` server parameter.
 
-### Result JSON
+**Response format**
 
 ```json
 {
@@ -563,15 +760,55 @@ Available metrics:
 }
 ```
 
-- **POST** `/slots/{id_slot}?action=erase`: Erase the prompt cache of the specified slot.
+### POST `/slots/{id_slot}?action=erase`: Erase the prompt cache of the specified slot.
 
-### Result JSON
+**Response format**
 
 ```json
 {
     "id_slot": 0,
     "n_erased": 1745
 }
+```
+
+### GET `/lora-adapters`: Get list of all LoRA adapters
+
+This endpoint returns the loaded LoRA adapters. You can add adapters using `--lora` when starting the server, for example: `--lora my_adapter_1.gguf --lora my_adapter_2.gguf ...`
+
+By default, all adapters will be loaded with scale set to 1. To initialize all adapters scale to 0, add `--lora-init-without-apply`
+
+If an adapter is disabled, the scale will be set to 0.
+
+**Response format**
+
+```json
+[
+    {
+        "id": 0,
+        "path": "my_adapter_1.gguf",
+        "scale": 0.0
+    },
+    {
+        "id": 1,
+        "path": "my_adapter_2.gguf",
+        "scale": 0.0
+    }
+]
+```
+
+### POST `/lora-adapters`: Set list of LoRA adapters
+
+To disable an adapter, either remove it from the list below, or set scale to 0.
+
+**Request format**
+
+To know the `id` of the adapter, use GET `/lora-adapters`
+
+```json
+[
+  {"id": 0, "scale": 0.2},
+  {"id": 1, "scale": 0.8}
+]
 ```
 
 ## More examples
@@ -617,11 +854,11 @@ bash chat.sh
 
 ### OAI-like API
 
-The HTTP `server` supports an OAI-like API: https://github.com/openai/openai-openapi
+The HTTP `llama-server` supports an OAI-like API: https://github.com/openai/openai-openapi
 
 ### API errors
 
-`server` returns errors in the same format as OAI: https://github.com/openai/openai-openapi
+`llama-server` returns errors in the same format as OAI: https://github.com/openai/openai-openapi
 
 Example of an error:
 
